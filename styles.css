@@ -478,8 +478,9 @@ body {
 .stats {
     display: flex;
     justify-content: center;
-    gap: 30px;
-    padding-top: 20px;
+    align-items: flex-end;      /* zarovná spodky */
+    gap: 28px;                  /* menší mezera */
+    padding-top: 16px;          /* menší okraj nahoře */
     border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -495,6 +496,10 @@ body {
 
 .stat {
     text-align: center;
+    min-width: 70px;            /* stejné šířky pro oba bloky */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .stat-number {
@@ -559,8 +564,8 @@ body {
 }
 
 .click-circle {
-    width: 56px;           /* původně 80px */
-    height: 56px;          /* původně 80px */
+    width: 48px;                /* ještě menší */
+    height: 48px;
     border-radius: 50%;
     background: linear-gradient(45deg, #ff6b6b, #ee5a24);
     color: white;

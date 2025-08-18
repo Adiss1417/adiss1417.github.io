@@ -564,15 +564,15 @@ body {
 }
 
 .click-circle {
-    width: 48px;                /* ještě menší */
-    height: 48px;
-    border-radius: 50%;
+    width: 56px;
+    height: 32px;
+    border-radius: 12px; /* obdélník se zaoblenými rohy */
     background: linear-gradient(45deg, #ff6b6b, #ee5a24);
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.7rem;     /* původně 0.8rem */
+    font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -580,6 +580,9 @@ body {
     box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
     user-select: none;
     animation: clickPulse 2s ease-in-out infinite;
+    margin-bottom: 4px;
+    text-align: center;
+    /* odstraněno: border-radius: 50%; */
 }
 
 .click-circle:hover {

@@ -1,6 +1,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Page loaded, initializing...');
     
+    // Nejdříve zobrazit CLICK ANYWHERE overlay
+    showClickAnywhereOverlay();
+    
     // Inicializace po načtení stránky
     initializeProfileCard();
     createParticleEffect();
@@ -16,6 +19,187 @@ document.addEventListener('DOMContentLoaded', function() {
     // Kontrola, zda bylo Discord RPC již dříve aktivováno
     checkDiscordRPCStatus();
 });
+
+// CLICK ANYWHERE overlay s hudbou
+function showClickAnywhereOverlay() {
+    // Vytvoření overlay elementu
+    const overlay = document.createElement('div');
+    overlay.id = 'clickAnywhereOverlay';
+    overlay.innerHTML = `
+        <div class="overlay-content">
+            <h1 class="overlay-title">CLICK ANYWHERE</h1>
+            <p class="overlay-subtitle">Click anywhere to start</p>
+        </div>
+        <button id="muteButton" class="mute-button" title="Mute/Unmute">
+            <span class="mute-icon">🔊</span>
+        </button>
+    `;
+    
+    // Skrytí hlavního obsahu
+    const mainContent = document.querySelector('.container');
+    if (mainContent) {
+        mainContent.style.filter = 'blur(20px)';
+        mainContent.style.pointerEvents = 'none';
+    }
+    
+    // Přidání overlay na stránku
+    document.body.appendChild(overlay);
+    
+    // Click handler pro celý overlay
+    overlay.addEventListener('click', function(e) {
+        if (e.target.id === 'muteButton') return; // Ignorovat klik na mute tlačítko
+        
+        // Skrytí overlay
+        overlay.style.animation = 'fadeOut 0.5s ease-out forwards';
+        setTimeout(() => {
+            overlay.remove();
+        }, 500);
+        
+        // Zobrazení hlavního obsahu
+        if (mainContent) {
+            mainContent.style.filter = 'none';
+            mainContent.style.pointerEvents = 'auto';
+        }
+        
+        // Spuštění hudby
+        startBackgroundMusic();
+    });
+    
+    // Mute tlačítko
+    const muteButton = document.getElementById('muteButton');
+    let isMuted = false;
+    
+    muteButton.addEventListener('click', function() {
+        isMuted = !isMuted;
+        const audio = document.getElementById('backgroundMusic');
+        
+        if (audio) {
+            if (isMuted) {
+                audio.pause();
+                this.querySelector('.mute-icon').textContent = '🔇';
+                this.title = 'Unmute';
+            } else {
+                audio.play();
+                this.querySelector('.mute-icon').textContent = '🔊';
+                this.title = 'Mute';
+            }
+        }
+    });
+    
+    // Přidání CSS stylů pro overlay
+    addOverlayStyles();
+}
+
+// Spuštění hudby
+function startBackgroundMusic() {
+    const audio = document.createElement('audio');
+    audio.id = 'backgroundMusic';
+    audio.src = 'assets/music/background-music.mp3'; // Změň název souboru podle tvé hudby
+    audio.loop = true;
+    audio.volume = 0.3;
+    
+    // Pokus o přehrání
+    audio.play().catch(error => {
+        console.log('Audio autoplay failed:', error);
+        // Hudba se spustí až po interakci uživatele
+    });
+    
+    document.body.appendChild(audio);
+}
+
+// CSS styly pro overlay
+function addOverlayStyles() {
+    const style = document.createElement('style');
+    style.textContent = `
+        #clickAnywhereOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .overlay-content {
+            text-align: center;
+            color: white;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .overlay-title {
+            font-size: 4rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+        }
+        
+        .overlay-subtitle {
+            font-size: 1.5rem;
+            opacity: 0.8;
+            font-weight: 300;
+        }
+        
+        .mute-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .mute-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.1);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        @media (max-width: 768px) {
+            .overlay-title {
+                font-size: 2.5rem;
+            }
+            
+            .overlay-subtitle {
+                font-size: 1.2rem;
+            }
+            
+            .mute-button {
+                width: 40px;
+                height: 40px;
+                font-size: 1.2rem;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+}
 
 function initializeProfileCard() {
     const profileCard = document.querySelector('.profile-card');
@@ -91,33 +275,11 @@ function addInteractiveEffects() {
     const socialLinks = document.querySelectorAll('.social-link');
     const profileCard = document.querySelector('.profile-card');
     
-    // Efekt při hover na avatar
-    avatar.addEventListener('mouseenter', function() {
-        this.style.transform = 'scale(1.1) rotate(5deg)';
-        this.style.filter = 'brightness(1.2) saturate(1.3)';
-    });
-    
-    avatar.addEventListener('mouseleave', function() {
-        this.style.transform = 'scale(1) rotate(0deg)';
-        this.style.filter = 'brightness(1) saturate(1)';
-    });
-    
-    // Klikací efekt na avatar
-    avatar.addEventListener('click', function() {
-        this.style.transform = 'scale(0.95) rotate(-5deg)';
-        setTimeout(() => {
-            this.style.transform = 'scale(1.05) rotate(5deg)';
-        }, 150);
-        setTimeout(() => {
-            this.style.transform = 'scale(1) rotate(0deg)';
-        }, 300);
-    });
+    // Avatar bez efektů - pouze statický obrázek
     
     // Efekty pro sociální odkazy
     socialLinks.forEach(link => {
         link.addEventListener('click', function(e) {
-            e.preventDefault();
-            
             // Ripple efekt
             const ripple = document.createElement('div');
             const rect = this.getBoundingClientRect();
@@ -148,9 +310,11 @@ function addInteractiveEffects() {
                 }
             }, 600);
             
-            // Simulace otevření odkazu (můžete změnit na skutečné odkazy)
-            const platform = this.getAttribute('data-platform');
-            console.log(`Clicking ${platform} link`);
+            // Otevření odkazu v novém tabu
+            const href = this.getAttribute('href');
+            if (href && href !== '#') {
+                window.open(href, '_blank', 'noopener,noreferrer');
+            }
         });
     });
     
@@ -966,6 +1130,9 @@ function initializeViewCounter() {
     
     // Přidání event listenerů pro další akce
     setupViewTracking();
+    
+    // Inicializace minihry s kolečkem
+    initializeClickGame();
 }
 
 // Vytvoření unikátního fingerprinu návštěvníka
@@ -1040,26 +1207,36 @@ function checkAndRecordVisit(fingerprint, stats) {
     
     let isNewVisit = false;
     let isUniqueVisit = false;
+    let shouldCountView = false;
     
     // Kontrola, jestli je návštěvník nový nebo se vrátil
     if (!stats.visitors[fingerprint]) {
-        // Nový návštěvník
+        // Nový návštěvník - vždy se počítá
         stats.visitors[fingerprint] = {
             firstVisit: now,
             lastVisit: now,
+            lastCountedVisit: now,
             visitCount: 1,
             sessions: [{ start: now, views: 1 }]
         };
         isNewVisit = true;
         isUniqueVisit = true;
+        shouldCountView = true;
         stats.uniqueViews++;
         stats.dailyStats[today].unique++;
     } else {
         // Existující návštěvník
         const visitor = stats.visitors[fingerprint];
-        const timeSinceLastVisit = now - visitor.lastVisit;
+        const timeSinceLastCounted = now - visitor.lastCountedVisit;
+        
+        // Počítá se view pouze pokud uplynula hodina od posledního počítaného view
+        if (timeSinceLastCounted > 60 * 60 * 1000) { // 60 minut = 1 hodina
+            shouldCountView = true;
+            visitor.lastCountedVisit = now;
+        }
         
         // Nová session pokud byla přestávka více než 30 minut
+        const timeSinceLastVisit = now - visitor.lastVisit;
         if (timeSinceLastVisit > 30 * 60 * 1000) {
             visitor.sessions.push({ start: now, views: 1 });
             isNewVisit = true;
@@ -1068,18 +1245,21 @@ function checkAndRecordVisit(fingerprint, stats) {
             visitor.sessions[visitor.sessions.length - 1].views++;
         }
         
+        // Vždy se aktualizuje čas poslední návštěvy
         visitor.lastVisit = now;
         visitor.visitCount++;
     }
     
-    // Aktualizace celkových statistik
-    stats.totalViews++;
-    stats.dailyStats[today].views++;
+    // Aktualizace celkových statistik pouze pokud se má počítat view
+    if (shouldCountView) {
+        stats.totalViews++;
+        stats.dailyStats[today].views++;
+    }
     
     // Uložení statistik
     saveViewStats(stats);
     
-    return { isNewVisit, isUniqueVisit };
+    return { isNewVisit, isUniqueVisit, shouldCountView };
 }
 
 // Aktualizace počítadel na stránce
@@ -1347,3 +1527,105 @@ function startCompactDiscordUpdates() {
 
 // Globální funkce pro debug (můžete volat showStats() v konzoli)
 window.showStats = showStats;
+
+// Minihra s kolečkem - Click Counter
+function initializeClickGame() {
+    const clickCircle = document.getElementById('clickCircle');
+    const clickCountElement = document.getElementById('clickCount');
+    
+    if (!clickCircle || !clickCountElement) return;
+    
+    // Načtení počtu kliků z localStorage
+    let totalClicks = parseInt(localStorage.getItem('adiss-click-count') || '0');
+    clickCountElement.textContent = totalClicks;
+    
+    // Click handler pro kolečko
+    clickCircle.addEventListener('click', function() {
+        // Zvýšení počtu kliků
+        totalClicks++;
+        clickCountElement.textContent = totalClicks;
+        
+        // Uložení do localStorage
+        localStorage.setItem('adiss-click-count', totalClicks.toString());
+        
+        // Animace při kliknutí
+        this.style.transform = 'scale(0.9)';
+        this.style.background = 'linear-gradient(45deg, #ee5a24, #ff6b6b)';
+        
+        // Reset animace
+        setTimeout(() => {
+            this.style.transform = 'scale(1)';
+            this.style.background = 'linear-gradient(45deg, #ff6b6b, #ee5a24)';
+        }, 150);
+        
+        // Ripple efekt
+        createClickRipple(this, event);
+        
+        // Zvukový efekt (volitelně)
+        playClickSound();
+    });
+}
+
+// Vytvoření ripple efektu při kliknutí
+function createClickRipple(element, event) {
+    const ripple = document.createElement('div');
+    const rect = element.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    
+    ripple.style.cssText = `
+        position: absolute;
+        width: ${size}px;
+        height: ${size}px;
+        left: ${event.clientX - rect.left - size/2}px;
+        top: ${event.clientY - rect.top - size/2}px;
+        background: rgba(255, 255, 255, 0.6);
+        border-radius: 50%;
+        transform: scale(0);
+        animation: clickRipple 0.6s linear;
+        pointer-events: none;
+        z-index: 10;
+    `;
+    
+    element.style.position = 'relative';
+    element.style.overflow = 'hidden';
+    element.appendChild(ripple);
+    
+    // Odstranění ripple efektu
+    setTimeout(() => {
+        if (ripple.parentNode) {
+            ripple.parentNode.removeChild(ripple);
+        }
+    }, 600);
+}
+
+// Zvukový efekt při kliknutí (volitelně)
+function playClickSound() {
+    // Vytvoření jednoduchého zvukového efektu
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
+    
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+}
+
+// Přidání CSS pro ripple efekt
+const clickRippleStyle = document.createElement('style');
+clickRippleStyle.textContent = `
+    @keyframes clickRipple {
+        to {
+            transform: scale(2);
+            opacity: 0;
+        }
+    }
+`;
+document.head.appendChild(clickRippleStyle);

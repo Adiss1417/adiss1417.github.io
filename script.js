@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Wire fav movie button (open provided TikTok link in new tab)
     try {
         const favBtn = document.getElementById('favMovieBtn');
-        if (favBtn) {
+        if (favBtn && favBtn.tagName === 'BUTTON') {
+            // only wire JS opener for button elements; anchors use native navigation
             favBtn.addEventListener('click', function () {
                 window.open('https://www.tiktok.com/@roxpowmg/video/7521183819693657350', '_blank', 'noopener');
             });
@@ -36,51 +37,70 @@ function showClickAnywhereOverlay() {
     // Vytvoření overlay elementu
     const overlay = document.createElement('div');
     overlay.id = 'clickAnywhereOverlay';
-    overlay.innerHTML = `
-        <div class="overlay-content">
-            <h1 class="overlay-title">CLICK ANYWHERE</h1>
-            <p class="overlay-subtitle">Click anywhere to start</p>
-        </div>
-        <button id="muteButton" class="mute-button" title="Mute/Unmute">
-            <span class="mute-icon">🔊</span>
-        </button>
-    `;
-    
-    // Skrytí hlavního obsahu
+        overlay.innerHTML = `
+            <div class="overlay-content">
+                <h1 class="overlay-title">CLICK ANYWHERE</h1>
+                <p class="overlay-subtitle">Click anywhere to start</p>
+            </div>
+            <button id="muteButton" class="mute-button" title="Mute/Unmute">
+                <span class="mute-icon">🔊</span>
+            </button>
+        `;
+
+    // Skrytí hlavního obsahu vizuálně, ale necháme pod ním tlačítka interaktivní
     const mainContent = document.querySelector('.container');
     if (mainContent) {
         mainContent.style.filter = 'blur(20px)';
-        mainContent.style.pointerEvents = 'none';
+            // don't disable pointer events so underlying buttons can be clicked
     }
-    
+
     // Přidání overlay na stránku
     document.body.appendChild(overlay);
+
+        // Click handler for overlay: forward click to underlying element (if any) and start music
+        overlay.addEventListener('click', function(e) {
+            if (e.target.id === 'muteButton') return; // ignore clicks on mute
+
+            const x = e.clientX;
+            const y = e.clientY;
+
+            // Temporarily make overlay ignore pointer events to detect underlying element
+            overlay.style.pointerEvents = 'none';
+            const underlying = document.elementFromPoint(x, y);
+            // restore overlay pointer handling
+            overlay.style.pointerEvents = 'auto';
+
+            // If user actually clicked a button/link underneath, trigger it
+            try {
+                if (underlying) {
+                    const tag = underlying.tagName;
+                    if (tag === 'BUTTON' || tag === 'A' || underlying.classList.contains('click-circle') || underlying.classList.contains('fav-movie-btn') || underlying.classList.contains('social-link')) {
+                        // trigger click on underlying element
+                        underlying.click();
+                        window.__userClickedAButton = true;
+                    }
+                }
+            } catch (err) {
+                console.warn('Forward click failed', err);
+            }
+
+            // Fade out overlay and unblur content
+            overlay.style.animation = 'fadeOut 0.5s ease-out forwards';
+            setTimeout(() => {
+                overlay.remove();
+                if (mainContent) mainContent.style.filter = 'none';
+            }, 500);
+
+            // Start music on any overlay click
+            startBackgroundMusic();
+        });
     
-    // Click handler pro celý overlay
-    overlay.addEventListener('click', function(e) {
-        if (e.target.id === 'muteButton') return; // Ignorovat klik na mute tlačítko
-        
-        // Skrytí overlay
-        overlay.style.animation = 'fadeOut 0.5s ease-out forwards';
-        setTimeout(() => {
-            overlay.remove();
-        }, 500);
-        
-        // Zobrazení hlavního obsahu
-        if (mainContent) {
-            mainContent.style.filter = 'none';
-            mainContent.style.pointerEvents = 'auto';
-        }
-        
-        // Spuštění hudby
-        startBackgroundMusic();
-    });
-    
-    // Mute tlačítko
+    // Mute tlačítko (funguje i pokud audio ještě nebylo vytvořeno)
     const muteButton = document.getElementById('muteButton');
     let isMuted = false;
     
-    muteButton.addEventListener('click', function() {
+    muteButton.addEventListener('click', function(e) {
+        e.stopPropagation();
         isMuted = !isMuted;
         const audio = document.getElementById('backgroundMusic');
         
@@ -94,6 +114,10 @@ function showClickAnywhereOverlay() {
                 this.querySelector('.mute-icon').textContent = '🔊';
                 this.title = 'Mute';
             }
+        } else {
+            // Pokud audio ještě neexistuje, update ikonu jen vizuálně
+            this.querySelector('.mute-icon').textContent = isMuted ? '🔇' : '🔊';
+            this.title = isMuted ? 'Unmute' : 'Mute';
         }
     });
     
@@ -101,20 +125,149 @@ function showClickAnywhereOverlay() {
     addOverlayStyles();
 }
 
+// Initialize and update the small compact Discord status block inside the profile card
+async function initializeDiscordCompactStatus() {
+    const container = document.getElementById('discordStatusCompact');
+    if (!container) return;
+
+    async function updateCompact() {
+        try {
+            const DISCORD_USER_ID = '876151017329291284';
+            const res = await fetch(`https://api.lanyard.rest/v1/users/${DISCORD_USER_ID}`);
+            if (!res.ok) throw new Error('Lanyard fetch failed');
+            const payload = await res.json();
+            const data = payload && payload.data ? payload.data : null;
+
+            if (!data) throw new Error('No data');
+
+            const nameEl = container.querySelector('.discord-compact-name');
+            const statusEl = container.querySelector('.discord-compact-status');
+            const imgEl = container.querySelector('.discord-compact-img');
+            const indicator = container.querySelector('.discord-compact-indicator');
+
+            if (nameEl) nameEl.textContent = data.discord_user.global_name || data.discord_user.username || nameEl.textContent;
+            // prefer showing Spotify in compact if available; otherwise show game/activity
+            let activityText = '';
+            try {
+                // if Spotify is active, prefer showing it in compact
+                if (data.listening_to_spotify && data.spotify) {
+                    activityText = `Listening: ${data.spotify.song || 'Unknown'} — ${data.spotify.artist || 'Unknown'}`;
+                } else {
+                    // find first non-Spotify activity (game)
+                    let gameActivity = null;
+                    if (data.activities && data.activities.length > 0) {
+                        gameActivity = data.activities.find(a => {
+                            const name = (a.name || '').toLowerCase();
+                            return name && !name.includes('spotify') && name !== '';
+                        }) || null;
+                    }
+
+                    if (gameActivity) {
+                        activityText = gameActivity.name || '';
+                        if (gameActivity.details) activityText += `: ${gameActivity.details}`;
+                        if (gameActivity.state) activityText += ` — ${gameActivity.state}`;
+                    } else if (data.activities && data.activities.length > 0) {
+                        const act = data.activities[0];
+                        activityText = act.name || getStatusText(data.discord_status) || data.discord_status || 'Offline';
+                    } else {
+                        activityText = getStatusText(data.discord_status) || data.discord_status || 'Offline';
+                    }
+                }
+            } catch (e) {
+                activityText = getStatusText(data.discord_status) || data.discord_status || 'Offline';
+            }
+
+            if (statusEl) {
+                statusEl.textContent = activityText;
+                // keep full status info in title for hover
+                statusEl.title = JSON.stringify({ status: data.discord_status, activities: data.activities || [], spotify: data.spotify || null });
+            }
+            if (imgEl && data.discord_user && data.discord_user.avatar) {
+                imgEl.src = `https://cdn.discordapp.com/avatars/${data.discord_user.id}/${data.discord_user.avatar}.png?size=128`;
+            }
+            if (indicator) {
+                const map = { online: '#23a55a', idle: '#f0b232', dnd: '#f23f42', offline: '#80848e' };
+                indicator.style.backgroundColor = map[data.discord_status] || map.offline;
+            }
+        } catch (err) {
+            console.warn('Failed to update compact Discord status:', err);
+        }
+    }
+
+    // initial update and periodic refresh every 20s
+    updateCompact();
+    // make compact block interactive: open full widget on click / Enter / Space
+    try {
+        if (!container.dataset.discordInteractive) {
+            container.style.cursor = 'pointer';
+            container.setAttribute('role', 'button');
+            container.tabIndex = 0;
+            container.addEventListener('click', function (e) {
+                e.preventDefault();
+                showDiscordStatusWidget();
+            });
+            container.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    showDiscordStatusWidget();
+                }
+            });
+            container.dataset.discordInteractive = '1';
+        }
+    } catch (err) {
+        console.warn('Failed to attach compact discord handlers', err);
+    }
+
+    setInterval(updateCompact, 20000);
+}
+
+// Simple check to toggle visual state for RPC button (keeps backward compatibility)
+function checkDiscordRPCStatus() {
+    const discordBtn = document.getElementById('discordRichPresenceBtn');
+    if (!discordBtn) return;
+    // if user previously activated RPC, mark it visually
+    const active = !!localStorage.getItem('discord_rpc_active');
+    if (active) discordBtn.classList.add('discord-active');
+    else discordBtn.classList.remove('discord-active');
+}
+
 // Spuštění hudby
 function startBackgroundMusic() {
+    // configurable start time in seconds (set to desired offset)
+    const MUSIC_START_SEC = 30; // <-- change this number to start later/earlier in the track
+
     const audio = document.createElement('audio');
     audio.id = 'backgroundMusic';
-    audio.src = 'assets/music/background-music.mp3'; // Změň název souboru podle tvé hudby
+    audio.src = 'assets/music/song1.mp3';
     audio.loop = true;
     audio.volume = 0.3;
-    
-    // Pokus o přehrání
-    audio.play().catch(error => {
-        console.log('Audio autoplay failed:', error);
-        // Hudba se spustí až po interakci uživatele
-    });
-    
+    audio.preload = 'auto';
+
+    // Seek to configured start time after metadata loads (safe across browsers)
+    const trySeekAndPlay = () => {
+        try {
+            if (typeof MUSIC_START_SEC === 'number' && MUSIC_START_SEC > 0 && audio.duration && MUSIC_START_SEC < audio.duration) {
+                audio.currentTime = MUSIC_START_SEC;
+            }
+        } catch (err) {
+            // some browsers throw if seeking too early — ignore and let playback continue
+            console.warn('Seeking failed or not available yet:', err);
+        }
+
+        // Attempt to play; promise may reject due to autoplay rules but will succeed after user interaction
+        audio.play().catch(error => {
+            console.log('Audio play attempt failed (will retry on interaction):', error);
+        });
+    };
+
+    // If metadata loaded, we can seek immediately; otherwise wait for loadedmetadata
+    audio.addEventListener('loadedmetadata', trySeekAndPlay, { once: true });
+
+    // In case metadata already available (cached), try immediately
+    if (audio.readyState >= 1) {
+        trySeekAndPlay();
+    }
+
     document.body.appendChild(audio);
 }
 
@@ -128,12 +281,12 @@ function addOverlayStyles() {
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            z-index: 9999;
+            background: linear-gradient(135deg, rgba(102,126,234,0.85) 0%, rgba(118,75,162,0.85) 100%);
+            z-index: 9998;
             display: flex;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
+            pointer-events: auto; /* overlay catches clicks which JS will forward */
             animation: fadeIn 0.5s ease-out;
         }
         
@@ -141,6 +294,7 @@ function addOverlayStyles() {
             text-align: center;
             color: white;
             animation: pulse 2s ease-in-out infinite;
+            pointer-events: none;
         }
         
         .overlay-title {
@@ -170,6 +324,8 @@ function addOverlayStyles() {
             cursor: pointer;
             transition: all 0.3s ease;
             backdrop-filter: blur(10px);
+            pointer-events: auto; /* make mute interactive */
+            z-index: 10001;
         }
         
         .mute-button:hover {
@@ -177,6 +333,8 @@ function addOverlayStyles() {
             border-color: rgba(255, 255, 255, 0.5);
             transform: scale(1.1);
         }
+
+        
         
         @keyframes fadeIn {
             from { opacity: 0; }
@@ -538,7 +696,17 @@ async function fetchDiscordStatus() {
 // Zobrazí Discord status widget
 async function showDiscordStatusWidget() {
     const discordData = await fetchDiscordStatus();
-    
+
+    // pick game activity (first non-spotify) and spotify activity separately
+    let gameActivity = null;
+    if (discordData.activities && discordData.activities.length > 0) {
+        gameActivity = discordData.activities.find(a => { const n = (a.name||'').toLowerCase(); return n && !n.includes('spotify'); }) || null;
+    }
+    const currentActivity = gameActivity || (discordData.activities && discordData.activities.length > 0 ? discordData.activities[0] : null);
+    const spotifyActivity = (discordData.listening_to_spotify && discordData.spotify)
+        ? { details: discordData.spotify.song, state: discordData.spotify.artist }
+        : (discordData.activities ? discordData.activities.find(activity => (activity.name || '').toLowerCase() === 'spotify') : null);
+
     // Zavření existujícího widgetu pokud existuje
     const existingWidget = document.querySelector('.discord-widget');
     if (existingWidget) {
@@ -562,16 +730,7 @@ async function showDiscordStatusWidget() {
     };
     
     // Získání aktuální aktivity
-    const currentActivity = discordData.activities && discordData.activities.length > 0 
-        ? discordData.activities[0] 
-        : null;
     
-    // Spotify informace (preferuj Lanyard spotify objekt)
-    const spotifyActivity = (discordData.listening_to_spotify && discordData.spotify)
-        ? { details: discordData.spotify.song, state: discordData.spotify.artist }
-        : (discordData.listening_to_spotify
-            ? (discordData.activities && discordData.activities.find(activity => activity.name === 'Spotify'))
-            : null);
     
     widget.innerHTML = `
         <div class="discord-widget-content">
@@ -1199,6 +1358,68 @@ function animateNumber(element, startValue, endValue, duration = 600) {
 // spustit při načtení stránky
 document.addEventListener('DOMContentLoaded', function() {
     try { initializeViewCounter(); } catch (e) { console.error(e); }
+});
+
+/* --- GLOBAL CLICK COUNTER (shared) ---
+   Uses https://api.countapi.xyz to store a global count across visitors.
+   Falls back to a localStorage counter if the API fails. */
+const COUNTAPI_NAMESPACE = 'adiss1417';
+const COUNTAPI_KEY = 'global_clicks';
+
+async function fetchGlobalClickCount() {
+    const el = document.getElementById('clickCount');
+    if (!el) return;
+    try {
+        const res = await fetch(`https://api.countapi.xyz/get/${COUNTAPI_NAMESPACE}/${COUNTAPI_KEY}`);
+        if (!res.ok) throw new Error('countapi get failed');
+        const json = await res.json();
+        el.textContent = (typeof json.value === 'number') ? json.value : 0;
+    } catch (err) {
+        console.warn('Global click fetch failed, using fallback:', err);
+        const fallback = parseInt(localStorage.getItem('local_global_clicks') || '0', 10) || 0;
+        el.textContent = fallback;
+    }
+}
+
+async function hitGlobalClick() {
+    const el = document.getElementById('clickCount');
+    try {
+        const res = await fetch(`https://api.countapi.xyz/hit/${COUNTAPI_NAMESPACE}/${COUNTAPI_KEY}`);
+        if (!res.ok) throw new Error('countapi hit failed');
+        const json = await res.json();
+        if (el && typeof json.value === 'number') el.textContent = json.value;
+    } catch (err) {
+        console.warn('Global click increment failed, using fallback:', err);
+        // fallback: local increment
+        const current = parseInt(localStorage.getItem('local_global_clicks') || '0', 10) || 0;
+        const next = current + 1;
+        localStorage.setItem('local_global_clicks', next);
+        if (el) el.textContent = next;
+    }
+}
+
+function setupGlobalClickHandlers() {
+    const clickEl = document.getElementById('clickCircle');
+    if (clickEl) {
+        clickEl.addEventListener('click', function (e) {
+            e.preventDefault();
+            hitGlobalClick();
+        });
+        // keyboard accessibility
+        clickEl.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                hitGlobalClick();
+            }
+        });
+    }
+    // fetch current value on init
+    fetchGlobalClickCount();
+}
+
+// initialize click handlers when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    try { setupGlobalClickHandlers(); } catch (e) { console.error('setupGlobalClickHandlers failed', e); }
 });
 
 /* Reset view counter (vymaže aktuální uložené views a trackery) */

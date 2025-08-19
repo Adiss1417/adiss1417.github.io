@@ -76,20 +76,25 @@
             <!-- Statistiky -->
             <div class="stats">
                 <div class="stat">
-                    <span class="stat-number" id="viewCounter">👁️ <span id="viewCount">0</span></span>
+                    <div style="text-align:center;">
+                        <a class="fav-movie-btn" id="favMovieBtn" aria-label="Open fav movie" href="https://www.tiktok.com/@roxpowmg/video/7521183819693657350" target="_blank" rel="noopener">Fav Movie</a>
+                    </div>
+                    <span class="stat-number" id="viewCounter"><span class="stat-icon">👁️</span> <span class="stat-count"><span id="viewCount">0</span></span></span>
                     <span class="stat-label">Views</span>
                 </div>
                 <div class="stat">
+                    <div style="text-align:center;">
                         <div class="click-game">
                             <div class="buttons-row">
-                                <div class="click-circle" id="clickCircle">CLICK ME</div>
-                                <!-- fav movie button (inside profile card, next to CLICK ME) -->
-                                <button class="fav-movie-btn" id="favMovieBtn" aria-label="Open fav movie">fav movie</button>
+                                <div class="btn-column">
+                                    <div class="click-circle" id="clickCircle" role="button" tabindex="0">CLICK ME</div>
+                                </div>
                             </div>
-
-                            <span class="stat-number">🖱️ <span id="clickCount">0</span></span>
-                            <span class="stat-label">Clicks</span>
                         </div>
+                    </div>
+
+                    <span class="stat-number"><span class="stat-icon">🖱️</span> <span class="stat-count"><span id="clickCount">0</span></span></span>
+                    <span class="stat-label">Clicks</span>
                 </div>
             </div>
         </div>

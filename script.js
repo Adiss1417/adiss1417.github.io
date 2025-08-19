@@ -1111,521 +1111,107 @@ function updateDiscordStatus(status) {
 // Globální funkce pro zavření notifikace
 window.closeDiscordNotification = closeDiscordNotification;
 
-// VIEW COUNTER - Real-time počítadlo views
+// VIEW COUNTER - Real-time počítadlo views (count once per visitor per hour)
 function initializeViewCounter() {
-    // Získání nebo vytvoření fingerprinu návštěvníka
-    const visitorFingerprint = getVisitorFingerprint();
-    
-    // Načtení současných statistik
-    const stats = getViewStats();
-    
-    // Kontrola, jestli je to nová návštěva
-    const isNewVisit = checkAndRecordVisit(visitorFingerprint, stats);
-    
-    // Aktualizace počítadel
-    updateViewCounters(stats);
-    
-    // Spuštění real-time aktualizací
-    startRealTimeUpdates();
-    
-    // Přidání event listenerů pro další akce
-    setupViewTracking();
-    
-    // Inicializace minihry s kolečkem
-    initializeClickGame();
-}
+    const viewCountEl = document.getElementById('viewCount');
+    if (!viewCountEl) return;
 
-// Vytvoření unikátního fingerprinu návštěvníka
-function getVisitorFingerprint() {
-    // Kombinace různých vlastností pro vytvoření fingerprinu
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    ctx.textBaseline = 'top';
-    ctx.font = '14px Arial';
-    ctx.fillText('AdissProfile', 2, 2);
-    
-    const fingerprint = {
-        screen: screen.width + 'x' + screen.height,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        language: navigator.language,
-        platform: navigator.platform,
-        canvas: canvas.toDataURL(),
-        userAgent: navigator.userAgent.slice(0, 50), // Zkráceno kvůli GDPR
-        timestamp: Date.now()
-    };
-    
-    // Vytvoření hash z fingerprinu
-    const fingerprintString = JSON.stringify(fingerprint);
-    let hash = 0;
-    for (let i = 0; i < fingerprintString.length; i++) {
-        const char = fingerprintString.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32bit integer
-    }
-    
-    return 'visitor_' + Math.abs(hash).toString(36);
-}
+    const STORAGE_KEY = 'site_views_stats';       // uloží celkový počet
+    const TRACKER_KEY = 'site_views_tracker';     // uloží poslední čas pro každého visitorId
+    const HOUR_MS = 60 * 60 * 1000;
 
-// Načtení statistik z localStorage
-function getViewStats() {
-    const defaultStats = {
-        totalViews: 0,
-        uniqueViews: 0,
-        visitors: {},
-        dailyStats: {},
-        lastUpdated: Date.now()
-    };
-    
-    try {
-        const saved = localStorage.getItem('adiss-profile-stats');
-        return saved ? { ...defaultStats, ...JSON.parse(saved) } : defaultStats;
-    } catch (error) {
-        console.log('Loading default stats');
-        return defaultStats;
-    }
-}
-
-// Uložení statistik do localStorage
-function saveViewStats(stats) {
-    try {
-        stats.lastUpdated = Date.now();
-        localStorage.setItem('adiss-profile-stats', JSON.stringify(stats));
-    } catch (error) {
-        console.log('Could not save stats');
-    }
-}
-
-// Kontrola a záznam návštěvy
-function checkAndRecordVisit(fingerprint, stats) {
-    const today = new Date().toDateString();
+    const visitorId = getVisitorFingerprint();
     const now = Date.now();
-    
-    // Inicializace denních statistik
-    if (!stats.dailyStats[today]) {
-        stats.dailyStats[today] = { views: 0, unique: 0 };
+
+    // načti data
+    let stats = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"total":0}');
+    let tracker = JSON.parse(localStorage.getItem(TRACKER_KEY) || '{}');
+
+    const lastSeen = tracker[visitorId] || 0;
+
+    // pokud uplynula více než hodina, zvýšíme counter a uložíme čas
+    if (now - lastSeen > HOUR_MS) {
+        stats.total = (stats.total || 0) + 1;
+        tracker[visitorId] = now;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+        localStorage.setItem(TRACKER_KEY, JSON.stringify(tracker));
     }
-    
-    let isNewVisit = false;
-    let isUniqueVisit = false;
-    let shouldCountView = false;
-    
-    // Kontrola, jestli je návštěvník nový nebo se vrátil
-    if (!stats.visitors[fingerprint]) {
-        // Nový návštěvník - vždy se počítá
-        stats.visitors[fingerprint] = {
-            firstVisit: now,
-            lastVisit: now,
-            lastCountedVisit: now,
-            visitCount: 1,
-            sessions: [{ start: now, views: 1 }]
-        };
-        isNewVisit = true;
-        isUniqueVisit = true;
-        shouldCountView = true;
-        stats.uniqueViews++;
-        stats.dailyStats[today].unique++;
+
+    updateViewCounters(stats);
+}
+
+/* Vytvoření (nebo získání) unikátního ID návštěvníka uloženého v localStorage */
+function getVisitorFingerprint() {
+    const KEY = 'visitor_unique_id';
+    let id = localStorage.getItem(KEY);
+    if (id) return id;
+
+    // moderní prohlížeče: crypto.randomUUID(), fallback generátor
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        id = crypto.randomUUID();
     } else {
-        // Existující návštěvník
-        const visitor = stats.visitors[fingerprint];
-        const timeSinceLastCounted = now - visitor.lastCountedVisit;
-        
-        // Počítá se view pouze pokud uplynula hodina od posledního počítaného view
-        if (timeSinceLastCounted > 60 * 60 * 1000) { // 60 minut = 1 hodina
-            shouldCountView = true;
-            visitor.lastCountedVisit = now;
-        }
-        
-        // Nová session pokud byla přestávka více než 30 minut
-        const timeSinceLastVisit = now - visitor.lastVisit;
-        if (timeSinceLastVisit > 30 * 60 * 1000) {
-            visitor.sessions.push({ start: now, views: 1 });
-            isNewVisit = true;
-        } else {
-            // Pokračování ve stejné session
-            visitor.sessions[visitor.sessions.length - 1].views++;
-        }
-        
-        // Vždy se aktualizuje čas poslední návštěvy
-        visitor.lastVisit = now;
-        visitor.visitCount++;
+        id = 'v-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36);
     }
-    
-    // Aktualizace celkových statistik pouze pokud se má počítat view
-    if (shouldCountView) {
-        stats.totalViews++;
-        stats.dailyStats[today].views++;
-    }
-    
-    // Uložení statistik
-    saveViewStats(stats);
-    
-    return { isNewVisit, isUniqueVisit, shouldCountView };
+
+    localStorage.setItem(KEY, id);
+    return id;
 }
 
-// Aktualizace počítadel na stránce
+/* Aktualizace DOM s počtem z localStorage */
 function updateViewCounters(stats) {
-    const viewCountElement = document.getElementById('viewCount');
-    
-    if (viewCountElement) {
-        // Animace číslic
-        animateNumber(viewCountElement, parseInt(viewCountElement.textContent) || 0, stats.totalViews);
-    }
+    const el = document.getElementById('viewCount');
+    if (!el) return;
+    const newVal = (stats && stats.total) ? stats.total : 0;
+    // jednoduchý okamžitý update; pokud chcete animaci, použijte animateNumber()
+    el.textContent = newVal;
 }
 
-// Animace přírůstku čísel
-function animateNumber(element, startValue, endValue) {
-    const duration = 1000; // 1 sekunda
+/* (Volitelně) animace čísel - použít místo přímého update pokud chcete pozvolný nárůst */
+function animateNumber(element, startValue, endValue, duration = 600) {
+    const start = +startValue || 0;
+    const end = +endValue || 0;
+    const range = end - start;
+    if (range === 0) {
+        element.textContent = end;
+        return;
+    }
     const startTime = performance.now();
-    const difference = endValue - startValue;
-    
-    function updateNumber(currentTime) {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        
-        // Easing funkce pro smooth animaci
-        const easeOutQuart = 1 - Math.pow(1 - progress, 4);
-        const currentValue = Math.round(startValue + (difference * easeOutQuart));
-        
-        element.textContent = currentValue;
-        
-        if (progress < 1) {
-            requestAnimationFrame(updateNumber);
-        }
+    function step(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / duration);
+        element.textContent = Math.floor(start + range * t);
+        if (t < 1) requestAnimationFrame(step);
     }
-    
-    requestAnimationFrame(updateNumber);
+    requestAnimationFrame(step);
 }
 
-// Spuštění real-time aktualizací
-function startRealTimeUpdates() {
-    // Aktualizace každých 30 sekund pro zachycení změn z jiných tabů
-    setInterval(() => {
-        const currentStats = getViewStats();
-        updateViewCounters(currentStats);
-    }, 30000);
-    
-    // Listener pro změny v localStorage (jiné taby)
-    window.addEventListener('storage', (e) => {
-        if (e.key === 'adiss-profile-stats') {
-            const newStats = JSON.parse(e.newValue || '{}');
-            updateViewCounters(newStats);
-        }
-    });
-}
+// spustit při načtení stránky
+document.addEventListener('DOMContentLoaded', function() {
+    try { initializeViewCounter(); } catch (e) { console.error(e); }
+});
 
-// Nastavení trackingu dodatečných akcí
-function setupViewTracking() {
-    // Tracking času stráveného na stránce
-    let startTime = Date.now();
-    let isActive = true;
-    
-    // Tracking fokus/blur pro měření aktivního času
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            isActive = false;
-            recordTimeSpent(Date.now() - startTime);
-        } else {
-            startTime = Date.now();
-            isActive = true;
-        }
-    });
-    
-    // Tracking před zavřením stránky
-    window.addEventListener('beforeunload', () => {
-        if (isActive) {
-            recordTimeSpent(Date.now() - startTime);
-        }
-    });
-    
-    // Tracking interakcí (kliky na prvky)
-    document.addEventListener('click', (e) => {
-        recordInteraction(e.target.tagName, e.target.className);
-    });
-}
-
-// Záznam času stráveného na stránce
-function recordTimeSpent(timeSpent) {
-    if (timeSpent < 1000) return; // Ignorovat velmi krátké časy
-    
-    const stats = getViewStats();
-    const fingerprint = getVisitorFingerprint();
-    
-    if (stats.visitors[fingerprint]) {
-        const currentSession = stats.visitors[fingerprint].sessions.slice(-1)[0];
-        currentSession.timeSpent = (currentSession.timeSpent || 0) + timeSpent;
-        saveViewStats(stats);
-    }
-}
-
-// Záznam interakcí
-function recordInteraction(element, className) {
-    const stats = getViewStats();
-    const fingerprint = getVisitorFingerprint();
-    
-    if (stats.visitors[fingerprint]) {
-        const currentSession = stats.visitors[fingerprint].sessions.slice(-1)[0];
-        if (!currentSession.interactions) {
-            currentSession.interactions = [];
-        }
-        currentSession.interactions.push({
-            element,
-            className,
-            timestamp: Date.now()
-        });
-        saveViewStats(stats);
-    }
-}
-
-// Debug funkce pro zobrazení statistik v konzoli
-function showStats() {
-    const stats = getViewStats();
-    console.group('📊 Adiss Profile Stats');
-    console.log('Total Views:', stats.totalViews);
-    console.log('Unique Visitors:', stats.uniqueViews);
-    console.log('Daily Stats:', stats.dailyStats);
-    console.log('Visitors:', Object.keys(stats.visitors).length);
-    console.groupEnd();
-}
-
-// Kontrola Discord RPC statusu při načtení stránky
-function checkDiscordRPCStatus() {
-    const discordData = localStorage.getItem('discord-rpc-data');
-    if (discordData) {
-        try {
-            const data = JSON.parse(discordData);
-            // Kontrola, zda je data stále platná (např. ne starší než 24 hodin)
-            const daysPassed = (Date.now() - data.startTimestamp) / (1000 * 60 * 60 * 24);
-            if (daysPassed < 1) {
-                updateDiscordStatus('active');
-            } else {
-                // Vypršená data, vymazání
-                localStorage.removeItem('discord-rpc-data');
-            }
-        } catch (error) {
-            console.log('Error checking Discord RPC status');
-        }
-    }
-}
-
-// Inicializace kompaktního Discord statusu
-async function initializeDiscordCompactStatus() {
-    const compactWidget = document.getElementById('discordStatusCompact');
-    if (!compactWidget) return;
-    
-    // Nejdříve zobrazíme fallback data okamžitě
-    const fallbackData = {
-        discord_user: {
-            id: '876151017329291284',
-            username: 'adiss17',
-            discriminator: '0',
-            avatar: '73bdab639963a6f12bc1ffd142a207fa',
-            global_name: 'Adiss'
-        },
-        discord_status: 'online',
-        activities: [],
-        listening_to_spotify: false
-    };
-    
-    console.log('Initializing Discord compact status with fallback data');
-    updateCompactDiscordWidget(fallbackData);
-    
-    // Přidání click handleru pro otevření detailního widgetu
-    compactWidget.addEventListener('click', () => {
-        showDiscordStatusWidget();
-    });
-    
+/* Reset view counter (vymaže aktuální uložené views a trackery) */
+function resetViewCounter() {
     try {
-        // Pokusíme se získat skutečná data z API
-        console.log('Trying to fetch real Discord data...');
-        const discordData = await fetchDiscordStatus();
-        
-        // Aktualizace kompaktního widgetu se skutečnými daty
-        console.log('Updating with real Discord data');
-        updateCompactDiscordWidget(discordData);
-        
-        // Spuštění automatických aktualizací
-        startCompactDiscordUpdates();
-        
-    } catch (error) {
-        console.log('Error fetching real Discord data, keeping fallback:', error);
-    }
-}
-
-// Aktualizace kompaktního Discord widgetu
-function updateCompactDiscordWidget(discordData) {
-    const compactImg = document.querySelector('.discord-compact-img');
-    const compactName = document.querySelector('.discord-compact-name');
-    const compactStatus = document.querySelector('.discord-compact-status');
-    const compactIndicator = document.querySelector('.discord-compact-indicator');
-    
-    if (!compactImg || !compactName || !compactStatus || !compactIndicator) return;
-    
-    // Aktualizace avatar
-    const avatarUrl = discordData.discord_user.avatar 
-        ? `https://cdn.discordapp.com/avatars/${discordData.discord_user.id}/${discordData.discord_user.avatar}.png?size=128`
-        : 'https://cdn.discordapp.com/embed/avatars/0.png';
-    compactImg.src = avatarUrl;
-    
-    // Aktualizace jména
-    compactName.textContent = discordData.discord_user.global_name || discordData.discord_user.username;
-    
-    // Status barvy
-    const statusColors = {
-        online: '#23a55a',
-        idle: '#f0b232',
-        dnd: '#f23f42',
-        offline: '#80848e'
-    };
-    
-    // Aktualizace status indikátoru
-    compactIndicator.style.backgroundColor = statusColors[discordData.discord_status] || statusColors.offline;
-    
-    // Aktualizace status textu
-    const currentActivity = discordData.activities && discordData.activities.length > 0 
-        ? discordData.activities[0] 
-        : null;
-    
-    let statusText = getStatusText(discordData.discord_status);
-    
-    if (discordData.listening_to_spotify) {
-        if (discordData.spotify && (discordData.spotify.song || discordData.spotify.artist)) {
-            const song = discordData.spotify.song || 'Listening to Spotify';
-            const artist = discordData.spotify.artist ? ` — ${discordData.spotify.artist}` : '';
-            statusText = `🎵 ${song}${artist}`;
+        localStorage.removeItem('site_views_stats');
+        localStorage.removeItem('site_views_tracker');
+        // ponecháme visitor_unique_id, aby návštěvník zůstal stejný
+        if (typeof updateViewCounters === 'function') {
+            updateViewCounters({ total: 0 });
         } else {
-            const spotifyActivity = discordData.activities && discordData.activities.find(activity => activity.name === 'Spotify');
-            statusText = `🎵 ${spotifyActivity?.details || 'Listening to Spotify'}`;
+            const el = document.getElementById('viewCount');
+            if (el) el.textContent = '0';
         }
-    } else if (currentActivity) {
-        statusText = `🎮 ${currentActivity.name}`;
+        console.log('✅ View counters reset to 0 (localStorage cleared).');
+    } catch (e) {
+        console.error('Error resetting view counters:', e);
     }
-    
-    console.log('📱 Discord status updated:', statusText);
-    compactStatus.textContent = statusText;
 }
 
-// Spuštění automatických aktualizací pro kompaktní widget
-function startCompactDiscordUpdates() {
-    // Zastavení existujícího intervalu
-    if (window.discordCompactUpdateInterval) {
-        clearInterval(window.discordCompactUpdateInterval);
+// Pokud chcete automaticky resetovat při načtení přidáním ?resetViews=1 do URL
+document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('resetViews') === '1') {
+        resetViewCounter();
     }
-    
-    // Nový interval pro aktualizace každých 20 sekund
-    window.discordCompactUpdateInterval = setInterval(async () => {
-        const compactWidget = document.getElementById('discordStatusCompact');
-        if (compactWidget && compactWidget.style.display !== 'none') {
-            try {
-                const discordData = await fetchDiscordStatus();
-                updateCompactDiscordWidget(discordData);
-            } catch (error) {
-                console.log('Error updating compact Discord widget:', error);
-            }
-        }
-    }, 20000); // 20 sekund
-}
-
-// Globální funkce pro debug (můžete volat showStats() v konzoli)
-window.showStats = showStats;
-
-// Minihra s kolečkem - Click Counter
-function initializeClickGame() {
-    const clickCircle = document.getElementById('clickCircle');
-    const clickCountElement = document.getElementById('clickCount');
-    
-    if (!clickCircle || !clickCountElement) return;
-    
-    // Načtení počtu kliků z localStorage
-    let totalClicks = parseInt(localStorage.getItem('adiss-click-count') || '0');
-    clickCountElement.textContent = totalClicks;
-    
-    // Click handler pro kolečko
-    clickCircle.addEventListener('click', function() {
-        // Zvýšení počtu kliků
-        totalClicks++;
-        clickCountElement.textContent = totalClicks;
-        
-        // Uložení do localStorage
-        localStorage.setItem('adiss-click-count', totalClicks.toString());
-        
-        // Animace při kliknutí
-        this.style.transform = 'scale(0.9)';
-        this.style.background = 'linear-gradient(45deg, #ee5a24, #ff6b6b)';
-        
-        // Reset animace
-        setTimeout(() => {
-            this.style.transform = 'scale(1)';
-            this.style.background = 'linear-gradient(45deg, #ff6b6b, #ee5a24)';
-        }, 150);
-        
-        // Ripple efekt
-        createClickRipple(this, event);
-        
-        // Zvukový efekt (volitelně)
-        playClickSound();
-    });
-}
-
-// Vytvoření ripple efektu při kliknutí
-function createClickRipple(element, event) {
-    const ripple = document.createElement('div');
-    const rect = element.getBoundingClientRect();
-    const size = Math.max(rect.width, rect.height);
-    
-    ripple.style.cssText = `
-        position: absolute;
-        width: ${size}px;
-        height: ${size}px;
-        left: ${event.clientX - rect.left - size/2}px;
-        top: ${event.clientY - rect.top - size/2}px;
-        background: rgba(255, 255, 255, 0.6);
-        border-radius: 50%;
-        transform: scale(0);
-        animation: clickRipple 0.6s linear;
-        pointer-events: none;
-        z-index: 10;
-    `;
-    
-    element.style.position = 'relative';
-    element.style.overflow = 'hidden';
-    element.appendChild(ripple);
-    
-    // Odstranění ripple efektu
-    setTimeout(() => {
-        if (ripple.parentNode) {
-            ripple.parentNode.removeChild(ripple);
-        }
-    }, 600);
-}
-
-// Zvukový efekt při kliknutí (volitelně)
-function playClickSound() {
-    // Vytvoření jednoduchého zvukového efektu
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
-    
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.1);
-}
-
-// Přidání CSS pro ripple efekt
-const clickRippleStyle = document.createElement('style');
-clickRippleStyle.textContent = `
-    @keyframes clickRipple {
-        to {
-            transform: scale(2);
-            opacity: 0;
-        }
-    }
-`;
-document.head.appendChild(clickRippleStyle);
+});

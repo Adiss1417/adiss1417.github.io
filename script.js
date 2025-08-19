@@ -18,6 +18,17 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Kontrola, zda bylo Discord RPC již dříve aktivováno
     checkDiscordRPCStatus();
+    // Wire fav movie button (open provided TikTok link in new tab)
+    try {
+        const favBtn = document.getElementById('favMovieBtn');
+        if (favBtn) {
+            favBtn.addEventListener('click', function () {
+                window.open('https://www.tiktok.com/@roxpowmg/video/7521183819693657350', '_blank', 'noopener');
+            });
+        }
+    } catch (e) {
+        console.error('fav movie button wiring failed', e);
+    }
 });
 
 // CLICK ANYWHERE overlay s hudbou
